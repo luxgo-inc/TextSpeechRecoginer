@@ -29,6 +29,9 @@ Xcode CloudからTestFlightおよびAppStoreにアプリをシームレスにデ
     // キーは変換後のテキストのインデックス、値は元のテキストのインデックス
     private var mapping = [Int: Int]()
 
+    // 既に発話された範囲を追跡するためのリストを追加
+    private var spokenRanges: [NSRange] = []
+
     private var synthesizer = AVSpeechSynthesizer()
 
     override func viewDidLoad() {
@@ -144,13 +147,42 @@ extension ViewController: AVSpeechSynthesizerDelegate {
             return
         }
 
+        print("word speech range: \(characterRange)")
+
+        // delegateで返された発話箇所から予めマッピングされたNSRangeを元にオリジナルテキストのrangeを取得し、
+        // 改行コード毎にまとめられたテキストの該当するRangeを特定してハイライトするパターン
+        let originalRange = convertRange(characterRange, withMapping: mapping)
+        if let bundleRange = textBundlesRanges.first(where: { NSIntersectionRange($0, originalRange).length > 0 }) {
+            DispatchQueue.main.async {
+                // 該当するまとまりをハイライトする
+                print("highlight mapped range: \(bundleRange)")
+                self.highlightText(in: self.textView, withRange: bundleRange)
+            }
+        }
+        return
+
+
+
+        /*
         guard let speechRange = getOriginalRangeFromSSMLRange(ssmlText: convertedText, characterRange: characterRange) else { return }
 
+        // 発話された範囲をリストに追加
+        spokenRanges.append(speechRange)
+        print("word speech range from original text: \(speechRange)")
 
-        print("highlight word speech: \(characterRange)")
         // 発話される範囲がどのまとまりに該当するかを特定
+        if let bundleRange = textBundlesRanges.first(where: { range in
+                        NSIntersectionRange(range, speechRange).length > 0 && !spokenRanges.contains(where: { spokenRange in
+                            NSIntersectionRange(range, spokenRange).length > 0
+                        })
+                    }) {
+
+        // delegateで返された発話箇所からテキストを取得し、SSML変換前のテキストから範囲を特定してハイライトするパターン
+//        if let bundleRange = textBundlesRanges.first(where: { NSIntersectionRange($0, speechRange).length > 0 }) {
+
+        // delegateで返された発話箇所をハイライトするパターン
 //        if let bundleRange = textBundlesRanges.first(where: { NSIntersectionRange($0, characterRange).length > 0 }) {
-        if let bundleRange = textBundlesRanges.first(where: { NSIntersectionRange($0, speechRange).length > 0 }) {
+
             DispatchQueue.main.async {
                 // 該当するまとまりをハイライトする
 //                self.highlightText(in: self.textView, withRanges: [bundleRange])
@@ -158,6 +190,7 @@ extension ViewController: AVSpeechSynthesizerDelegate {
                 self.highlightText(in: self.textView, withRange: bundleRange)
             }
         }
+         */
     }
 
     // SSML変換されたテキストから発話対象のテキストを取得し、
@@ -176,6 +209,12 @@ extension ViewController: AVSpeechSynthesizerDelegate {
             return NSRange(location: startIndex, length: length)
         }
         return nil
+    }
+
+    func convertRange(_ range: NSRange, withMapping mapping: [Int: Int]) -> NSRange {
+        let start = mapping[range.location] ?? 0
+        let end = mapping[range.location + range.length] ?? 0
+        return NSRange(location: start, length: end - start)
     }
 
 }
